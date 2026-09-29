@@ -1,0 +1,27 @@
+COMMERCIAL INVOICE
+
+Shipper / Exporter:
+Shenzhen Apex Microelectronics Co., Ltd.
+High-Tech Industrial Park, Nanshan, Shenzhen, Guangdong, China
+Tax ID: 91440300MA5XXXXXXX
+
+Consignee / Buyer:
+LES SCHWAB WAREHOUSE CENTER
+20900 COOLEY RD, BEND OR 97701-3406, USA
+
+Invoice Number: INV-2026-0042
+Invoice Date: 18/02/2026
+Country of Origin: CN
+Incoterms: FOB Shenzhen
+Currency: USD
+
+Item | Description | HS Code | Qty | Unit | Unit Price | Amount
+1 | Automotive Grade Microcontroller ICs for ADAS Systems (Model: APX-904) | 8542.31 | 50000 | PCE | 4.92 | 245800.00
+2 | Evaluation Board Kit | 8471.80 | 200 | PCE | 85.00 | 17000.00
+
+Subtotal: 262800.00
+Freight: 4200.00
+Insurance: 1200.00
+Total: 268200.00
+
+Declaration: We certify this invoice is true and correct, goods are of Chinese origin, and prices are actual.

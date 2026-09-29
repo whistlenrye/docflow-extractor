@@ -24,6 +24,7 @@ class Party(BaseModel):
     name: Optional[str] = None
     address: Optional[str] = None
     country: Optional[str] = None
+    tax_id: Optional[str] = None
 
 
 class ExtractionResult(BaseModel):
@@ -37,6 +38,9 @@ class ExtractionResult(BaseModel):
     currency: Optional[str] = None
     line_items: List[LineItem] = []
     subtotal: Optional[float] = None
+    freight: Optional[float] = None
+    insurance: Optional[float] = None
     total: Optional[float] = None
     raw_text: Optional[str] = None
     warnings: List[str] = []
+    model_used: Optional[str] = None

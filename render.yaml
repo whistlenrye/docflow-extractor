@@ -3,8 +3,18 @@ services:
     name: docflow-backend
     env: python
     plan: free
-    buildCommand: pip install -r backend/requirements.txt && python -m playwright install chromium
+    buildCommand: pip install -r backend/requirements.txt
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: "25"
+      - key: RATE_LIMIT_PER_MIN
+        value: "30"

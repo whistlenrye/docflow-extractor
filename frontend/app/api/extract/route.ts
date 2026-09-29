@@ -7,7 +7,8 @@ export async function POST(req: NextRequest) {
   const res = await fetch(`${BACKEND}/extract`, {
     method: "POST",
     body: formData,
+    headers: { "X-Correlation-Id": crypto.randomUUID() },
   });
   const data = await res.json();
-  return NextResponse.json(data);
+  return NextResponse.json(data, { status: res.status });
 }

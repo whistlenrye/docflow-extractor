@@ -15,6 +15,7 @@ from schemas import ExtractionResult, DocumentType
 from extractors import get_extractor
 from gemini_client import extract_with_gemini
 from security import read_limited, sniff_type, sanitize_filename, new_correlation_id
+from form_filler import fill_form, result_to_fields
 
 load_dotenv()
 
@@ -98,3 +99,42 @@ async def extract(request: Request,
         log.exception("[%s] unhandled", cid)
         return JSONResponse(status_code=500,
                             content={"detail": "extraction failed", "cid": cid})
+
+
+class FillRequest(ExtractionResult):
+    """Reuses the extraction schema so the client can POST the same JSON it got back."""
+    target_url: str | None = None
+    dry_run: bool = False
+
+
+@app.post("/fill")
+@limiter.limit(f"{os.getenv('RATE_LIMIT_PER_MIN', '30')}/minute")
+async def fill(request: Request, body: FillRequest):
+    """Map extracted fields into a target web form via Playwright.
+
+    Accepts an ExtractionResult (the same shape /extract returns) plus an
+    optional target_url and dry_run flag. dry_run skips launching Chromium.
+    """
+    cid = new_correlation_id()
+    try:
+        result = ExtractionResult.model_validate(body.model_dump())
+        out = await fill_form(result, target_url=body.target_url, dry_run=body.dry_run)
+        out["cid"] = cid
+        return out
+    except Exception as e:
+        log.exception("[%s] fill failed", cid)
+        raise HTTPException(500, f"form fill failed (cid={cid}): {type(e).__name__}")
+
+
+@app.get("/fill/preview")
+async def fill_preview(doc_type: str = "shipping.commercial_invoice"):
+    """Return the field map a sample extraction would produce, no browser."""
+    sample = ExtractionResult(
+        doc_type=doc_type, confidence=0.9,
+        shipper={"name": "Acme Exports Pty Ltd", "address": "1 Harbour Rd, Sydney", "country": "AU"},
+        consignee={"name": "BorderPrint Logistics", "address": "99 Dock St, Melbourne", "country": "AU"},
+        invoice_number="INV-1001", invoice_date="2026-09-15", incoterms="FOB Sydney",
+        currency="AUD", subtotal=1200.0, freight=150.0, insurance=30.0, total=1380.0,
+        line_items=[{"description": "Widget A", "quantity": 10, "unit": "PCS", "unit_price": 100.0, "amount": 1000.0}],
+    )
+    return {"fields": result_to_fields(sample)}

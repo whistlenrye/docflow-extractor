@@ -46,6 +46,7 @@ A single, self-contained pipeline that:
 | CORS | Explicit allowlist via `CORS_ORIGINS` env | `*` was a V1 hole; now locked down. |
 | Rate limit | 30 req/min/IP via `slowapi` | Caps free-tier burn and abuse. |
 | No DB | Results returned to browser | Keeps the free tier truly zero-cost; no persistence of user docs. |
+| Form filling | **Playwright** headless Chromium | Deterministic `locator.fill()`, async, cheap; matches README step 4. See D11. |
 
 ---
 
@@ -61,9 +62,10 @@ A single, self-contained pipeline that:
 See **`SECURITY.md`**. Headline items:
 
 1. Free-tier Gemini may train on prompts — do **not** upload documents containing real PII or commercially sensitive data to the free endpoint. Use a paid project or redact first.
-2. Render free tier sleeps after 15 min idle and has 512 MB RAM — fine for demos, not high throughput.
-3. No auth on the `/extract` endpoint — anyone who finds the URL can burn your free quota. Add an API key or put it behind auth before any public deploy.
+2. Render free tier sleeps after 15 min idle and has 512 MB RAM — fine for demos, not high throughput. Chromium pushes this closer to the ceiling (G6).
+3. No auth on the `/extract` or `/fill` endpoints — anyone who finds the URL can burn your free quota. Add an API key or put it behind auth before any public deploy.
 4. `raw_text` is truncated to 2,000 chars in the response to limit data exfiltration surface; full text is never persisted.
+5. `/fill` navigates the server browser to `target_url` — treat it as trusted-operator input only (G7).
 
 ---
 
@@ -79,10 +81,13 @@ See **`SECURITY.md`**. Headline items:
 cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env          # paste your GEMINI_API_KEY
+playwright install chromium          # downloads ~170 MB; needed for /fill
+cp .env.example .env                 # paste your GEMINI_API_KEY
 uvicorn main:app --reload --port 8000
 ```
 Health check: http://localhost:8000/health
+
+Sample target form (served by the Next dev server — see below): http://localhost:3000/sample-form
 
 ### Frontend
 ```bash
@@ -91,12 +96,23 @@ npm install
 cp .env.example .env.local    # BACKEND_URL=http://localhost:8000
 npm run dev
 ```
-Open http://localhost:3000
+Open http://localhost:3000. The sample form lives at `/sample-form`.
 
 ### Test with the sample
 1. Open the UI, pick `shipping.commercial_invoice`.
 2. Upload nothing — or paste the text from `samples/commercial_invoice_sample.txt`.
 3. Hit Extract. You should get a typed `ExtractionResult` with shipper, consignee, line items, totals.
+4. POST that JSON to `/fill` (or hit **Fill form** in the UI once wired) to drive it into the sample form. Use `dry_run: true` to preview the field map without launching Chromium.
+
+```bash
+# Preview the mapping with no browser:
+curl -s http://localhost:8000/fill/preview | jq
+
+# Dry-run a real extraction through /fill:
+curl -s -X POST http://localhost:8000/fill \
+  -H 'content-type: application/json' \
+  -d '{"doc_type":"shipping.commercial_invoice","confidence":0.9,"invoice_number":"INV-1","dry_run":true}'
+```
 
 ---
 
@@ -104,10 +120,11 @@ Open http://localhost:3000
 
 ```bash
 # backend -> Render: connect repo, it reads render.yaml
+#   build runs: pip install + playwright install chromium + install-deps
 # frontend -> Vercel: import repo, set BACKEND_URL to the Render URL
 ```
 
-Set `CORS_ORIGINS` on the backend to your Vercel domain. Set `GEMINI_API_KEY` in Render's env (mark as secret).
+Set `CORS_ORIGINS` on the backend to your Vercel domain. Set `GEMINI_API_KEY` in Render's env (mark as secret). Optionally set `FORM_TARGET_URL` to your real target form.
 
 ---
 
@@ -123,7 +140,9 @@ docflow-extractor/
 ├── render.yaml
 ├── .github/workflows/codeql.yml
 ├── backend/
-│   ├── main.py               ← FastAPI app + /extract
+│   ├── main.py               ← FastAPI app + /extract + /fill
+│   ├── form_filler.py        ← Playwright form mapping (new)
+│   ├── sample_form.html      ← bundled target form for demos
 │   ├── gemini_client.py      ← Gemini structured-output call
 │   ├── extractors.py         ← registry + fallback
 │   ├── schemas.py            ← Pydantic models
@@ -132,6 +151,7 @@ docflow-extractor/
 ├── frontend/
 │   ├── app/page.tsx
 │   ├── app/api/extract/route.ts
+│   ├── app/sample-form/      ← serves backend/sample_form.html
 │   └── package.json
 └── samples/
     ├── README.md

@@ -33,9 +33,16 @@ The API returns at most 2,000 chars of source text to limit the data-exfiltratio
 ### G5 — Dependency freshness
 Pins are from Sep 2026. Re-run `pip list --outdated` and `npm outdated` monthly; the CodeQL workflow will flag newly disclosed vulns in dependencies.
 
+### G6 — Playwright on the free tier (new)
+Chromium adds ~170 MB to the image and ~150–250 MB RSS at runtime. Combined with FastAPI + the Gemini client this sits close to the 512 MB ceiling, so concurrent fills or a cold start under memory pressure can OOM. **Mitigations in place:** headless Chromium only, one browser per request then closed, `PLAYWRIGHT_BROWSERS_PATH` pinned to ephemeral disk. **Before any real traffic:** move to a paid Render plan (2 GB+) or run the filler in a separate worker with more headroom. The `/fill` endpoint is rate-limited like `/extract`.
+
+### G7 — Target-form SSRF surface (new)
+`/fill` navigates the server's browser to `target_url` (body or `FORM_TARGET_URL` env). A caller could point it at internal addresses. **Mitigation:** only the operator sets `FORM_TARGET_URL`; the per-request override is accepted as-is because the endpoint is already unauthenticated (G2) and the whole service is demo-grade. Lock it down with an allowlist before any public deploy.
+
 ## What we hardened vs V1
 - CORS: `*` → explicit `CORS_ORIGINS` allowlist.
 - Upload: no size/type check → 25 MB cap + magic-byte sniff + extension allowlist.
 - Secrets: hardcoded none → `.env` + `.env.example`, gitignored.
 - Rate limit: none → 30 req/min/IP.
 - Error leakage: stack traces could surface → generic 500 with correlation id.
+- Form filling: none → Playwright headless Chromium, short-lived per request, dry-run mode for CI.

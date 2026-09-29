@@ -14,11 +14,13 @@ export default function Home() {
   const [docType, setDocType] = useState(DOC_TYPES[0]);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [filling, setFilling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fillMsg, setFillMsg] = useState<string | null>(null);
 
   async function handleExtract() {
     if (!file) return;
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setFillMsg(null);
     const form = new FormData();
     form.append("file", file);
     form.append("doc_type", docType);
@@ -30,6 +32,27 @@ export default function Home() {
       setError(e.message || "extraction failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFill() {
+    if (!result) return;
+    setFilling(true); setFillMsg(null); setError(null);
+    try {
+      const res = await fetch("/api/fill", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...result, dry_run: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+      setFillMsg(`Filled ${data.filled?.length ?? 0} fields` +
+        (data.skipped?.length ? ` (skipped: ${data.skipped.join(", ")})` : "") +
+        `.`);
+    } catch (e: any) {
+      setError(e.message || "fill failed");
+    } finally {
+      setFilling(false);
     }
   }
 
@@ -49,9 +72,16 @@ export default function Home() {
                 className="bg-black text-white px-4 py-2 rounded disabled:opacity-50">
           {loading ? "Extracting…" : "Extract"}
         </button>
+        {result && (
+          <button onClick={handleFill} disabled={filling}
+                  className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50">
+            {filling ? "Filling…" : "Fill form"}
+          </button>
+        )}
       </div>
 
       {error && <p className="text-red-600 text-sm">{error}</p>}
+      {fillMsg && <p className="text-green-600 text-sm">{fillMsg}</p>}
 
       {result && (
         <pre className="bg-gray-100 p-4 rounded overflow-auto text-sm">

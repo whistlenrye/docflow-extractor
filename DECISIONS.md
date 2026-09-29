@@ -38,3 +38,14 @@ Full rationale for every non-obvious choice. Read this when you want to change s
 
 ## D10. Repo ownership
 - Lives under the `whistlenrye` GitHub account (Whistle and Rise), not a personal account. Keeps company IP and access control in one place.
+
+## D11. Playwright for form filling (not an API client)
+- **Alternatives considered:** direct HTTP POST to the target system's API (fastest, but most customs/ICS endpoints are not public and require per-agency credentials), Selenium (heavier, slower, no first-class async), browser-use / Stagehand (LLM-driven, overkill and costs tokens per field).
+- **Why Playwright:** the README's step 4 explicitly called for browser automation; `locator.fill()` is deterministic and cheap; async API fits FastAPI; one pinned version + `playwright install chromium` is reproducible.
+- **Headless Chromium only** — no Firefox/WebKit. Cuts the browser download from ~700 MB to ~170 MB, which matters on Render's free tier (512 MB RAM, limited ephemeral disk).
+- **Short-lived browser per request** — launch, fill, close. Avoids leaking renderer processes across requests on a memory-constrained box.
+- **dry_run mode** — `/fill?dry_run=true` (or `dry_run: true` in the body) returns the field map without launching Chromium, so the mapping can be tested and CI'd without installing browsers.
+- **Bundled sample form** (`backend/sample_form.html`) — gives a zero-config target so the pipeline is demonstrable end-to-end before pointing at a real ICS/agency portal.
+- **Field-name contract** — the filler matches inputs by `name` attribute. Real target forms will need a thin adapter (or a `FORM_FIELD_MAP` env) because agency portals rarely use our names; the sample form is the reference implementation of that contract.
+- **Build-time browser install** — `render.yaml` runs `playwright install chromium && playwright install-deps chromium` during build, with `PLAYWRIGHT_BROWSERS_PATH` pinned so the binary survives deploys. `install-deps` pulls the shared libs Chromium needs on Debian.
+- **Accepted risk:** 512 MB is tight. Chromium + FastAPI + Gemini client can approach the ceiling on a busy box; the free tier is for demos, and a real deployment should move to a paid plan or a container with more headroom (documented in SECURITY.md G3/G6).

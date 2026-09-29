@@ -1,8 +1,7 @@
 """Playwright-based form filler.
 
 Maps an ExtractionResult into a target web form using headless Chromium.
-Designed to be called from the /fill endpoint. Keeps the browser lifecycle
-short-lived per request so it plays nicely with Render's free tier (512 MB).
+One browser per request, then closed.
 """
 from __future__ import annotations
 
@@ -10,11 +9,11 @@ import logging
 import os
 from typing import Any
 
-from schemas import ExtractionResult, LineItem
+from schemas import ExtractionResult
+from url_safety import assert_safe_target
 
 log = logging.getLogger("docflow.filler")
 
-# Default target form used by the sample. Override with FORM_TARGET_URL env.
 DEFAULT_TARGET_URL = os.getenv(
     "FORM_TARGET_URL", "http://localhost:3000/sample-form"
 )
@@ -60,7 +59,6 @@ def result_to_fields(result: ExtractionResult) -> dict[str, str]:
         fields["insurance"] = _fmt_money(result.insurance)
     if result.total is not None:
         fields["total"] = _fmt_money(result.total)
-    # Line items: first 5 rows, matching sample form capacity.
     for i, item in enumerate(result.line_items[:5]):
         n = i + 1
         if item.description:
@@ -78,28 +76,25 @@ def result_to_fields(result: ExtractionResult) -> dict[str, str]:
     return fields
 
 
-async def fill_form(result: ExtractionResult,
-                    target_url: str | None = None,
-                    dry_run: bool = False) -> dict[str, Any]:
-    """Drive the extracted fields into the target form.
-
-    dry_run=True skips launching the browser and just returns the field map,
-    which is handy for testing the mapping without Chromium installed.
-    """
+async def fill_form(
+    result: ExtractionResult,
+    target_url: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
     fields = result_to_fields(result)
+    url = target_url or DEFAULT_TARGET_URL
     if dry_run:
-        return {"dry_run": True, "target_url": target_url or DEFAULT_TARGET_URL,
-                "fields": fields}
+        return {"dry_run": True, "target_url": url, "fields": fields}
+
+    assert_safe_target(url)
 
     try:
         from playwright.async_api import async_playwright
-    except ImportError as e:
+    except ImportError as exc:
         raise RuntimeError(
-            "playwright is not installed; pip install playwright && "
-            "playwright install chromium"
-        ) from e
+            "playwright is not installed; pip install playwright && playwright install chromium"
+        ) from exc
 
-    url = target_url or DEFAULT_TARGET_URL
     filled: list[str] = []
     skipped: list[str] = []
 
@@ -108,6 +103,7 @@ async def fill_form(result: ExtractionResult,
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            assert_safe_target(page.url)
             for name, value in fields.items():
                 loc = page.locator(f"[name='{name}']")
                 if await loc.count() == 0:
@@ -125,11 +121,11 @@ async def fill_form(result: ExtractionResult,
                 else:
                     await loc.first.fill(value)
                 filled.append(name)
-            # Submit if a submit button exists.
             submit = page.locator("button[type='submit'], input[type='submit']")
             if await submit.count():
                 await submit.first.click()
                 await page.wait_for_load_state("domcontentloaded", timeout=15_000)
+                assert_safe_target(page.url)
         finally:
             await browser.close()
 

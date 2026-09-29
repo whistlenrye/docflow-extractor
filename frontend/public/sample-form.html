@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DocFlow Sample Target Form</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; }
+    label { display: block; margin: 0.6rem 0 0.2rem; font-size: 0.9rem; }
+    input, select { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    fieldset { border: 1px solid #ccc; margin: 1rem 0; padding: 0.8rem; }
+    button { margin-top: 1rem; padding: 0.5rem 1rem; }
+    #status { margin-top: 1rem; color: #0a0; }
+  </style>
+</head>
+<body>
+  <h1>Sample Customs Entry Form</h1>
+  <p>This is the target form Playwright fills from an extracted document.</p>
+  <form id="entry" method="get" action="#">
+    <fieldset>
+      <legend>Shipper</legend>
+      <label>Name <input name="shipper_name" /></label>
+      <label>Address <input name="shipper_address" /></label>
+      <label>Country <input name="shipper_country" /></label>
+      <label>Tax ID <input name="shipper_tax_id" /></label>
+    </fieldset>
+    <fieldset>
+      <legend>Consignee</legend>
+      <label>Name <input name="consignee_name" /></label>
+      <label>Address <input name="consignee_address" /></label>
+      <label>Country <input name="consignee_country" /></label>
+      <label>Tax ID <input name="consignee_tax_id" /></label>
+    </fieldset>
+    <fieldset>
+      <legend>Invoice</legend>
+      <label>Invoice number <input name="invoice_number" /></label>
+      <label>Invoice date <input name="invoice_date" /></label>
+      <label>Incoterms <input name="incoterms" /></label>
+      <label>Currency <select name="currency"><option></option><option>AUD</option><option>USD</option><option>EUR</option><option>GBP</option><option>CNY</option></select></label>
+      <label>Subtotal <input name="subtotal" /></label>
+      <label>Freight <input name="freight" /></label>
+      <label>Insurance <input name="insurance" /></label>
+      <label>Total <input name="total" /></label>
+    </fieldset>
+    <fieldset>
+      <legend>Line items</legend>
+      <div id="items"></div>
+    </fieldset>
+    <button type="submit">Submit entry</button>
+  </form>
+  <div id="status"></div>
+  <script>
+    const items = document.getElementById('items');
+    for (let i = 1; i <= 5; i++) {
+      const row = document.createElement('div');
+      row.innerHTML = `
+        <label>Item ${i} description <input name="item_${i}_desc" /></label>
+        <label>Qty <input name="item_${i}_qty" /></label>
+        <label>Unit <input name="item_${i}_unit" /></label>
+        <label>Unit price <input name="item_${i}_price" /></label>
+        <label>Amount <input name="item_${i}_amount" /></label>
+        <label>HS code <input name="item_${i}_hs" /></label>
+        <hr/>`;
+      items.appendChild(row);
+    }
+    document.getElementById('entry').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      document.getElementById('status').textContent =
+        'Received ' + Object.keys(data).filter(k => data[k]).length + ' fields.';
+    });
+  </script>
+</body>
+</html>

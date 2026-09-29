@@ -20,7 +20,7 @@ A single, self-contained pipeline that:
 
 1. Accepts an uploaded PDF, image, or pasted text.
 2. Detects the document type (or you pick it).
-3. Extracts fields into a typed Pydantic schema using a **free-tier Gemini model** (structured output, no regex guessing).
+3. Extracts fields into a typed Pydantic schema. Gemini is used when `GEMINI_API_KEY` is set; otherwise a deterministic parser reads the text. If Gemini errors or returns nothing, the parser fills the gaps.
 4. Maps those fields into a target form — either via an API POST or browser automation.
 5. Shows a before-and-after review so a human confirms before anything is submitted.
 
@@ -35,14 +35,14 @@ A single, self-contained pipeline that:
 
 | Decision | Choice | Why |
 |---|---|---|
-| Extraction brain | **Gemini 2.5 Flash** (free tier) | Best free-tier accuracy on the IDP Leaderboard; 1M-token context; native structured output via JSON schema; reads PDFs/images directly so no separate OCR step. |
+| Extraction brain | **Gemini 2.5 Flash** when `GEMINI_API_KEY` is set, else the deterministic parser | Structured output when a key exists. The parser is the offline fallback and is accurate on labeled invoices, not a stub. |
 | Structured output | Gemini `response_mime_type=application/json` + Pydantic schema | Guarantees parseable, typed results; one call replaces three regex passes. |
-| OCR fallback | Gemini vision (same model) | PaddleOCR was in the V1 stack but adds ~2 GB of deps and is weaker on forms/handwriting than Gemini Flash. Dropped. |
+| Offline fallback | Deterministic parser in `backend/parser.py` | Runs with no API key. Reads parties, pipe tables, and money labels without treating Subtotal as Total. |
 | Backend | FastAPI + Pydantic v2 | Async, typed, tiny surface. |
 | Frontend | Next.js App Router + TypeScript | Matches the existing `customs-doc-extractor` sibling; one deploy story. |
 | Hosting | Vercel Hobby (frontend) + Render free (backend) | Both free, no card, no subscription. |
 | Secrets | `.env` + `.env.example`, never committed | Standard; `.gitignore` blocks `.env`. |
-| File limits | 25 MB max, PDF/PNG/JPEG/WEBP only, magic-byte sniff | Prevents zip-bomb / polyglot uploads. |
+| File limits | 25 MB max, PDF/PNG/JPEG/WEBP/TXT, magic-byte sniff | Prevents zip-bomb / polyglot uploads. TXT is allowed so the sample can be uploaded. |
 | CORS | Explicit allowlist via `CORS_ORIGINS` env | `*` was a V1 hole; now locked down. |
 | Rate limit | 30 req/min/IP via `slowapi` | Caps free-tier burn and abuse. |
 | No DB | Results returned to browser | Keeps the free tier truly zero-cost; no persistence of user docs. |
@@ -63,9 +63,9 @@ See **`SECURITY.md`**. Headline items:
 
 1. Free-tier Gemini may train on prompts — do **not** upload documents containing real PII or commercially sensitive data to the free endpoint. Use a paid project or redact first.
 2. Render free tier sleeps after 15 min idle and has 512 MB RAM — fine for demos, not high throughput. Chromium pushes this closer to the ceiling (G6).
-3. No auth on the `/extract` or `/fill` endpoints — anyone who finds the URL can burn your free quota. Add an API key or put it behind auth before any public deploy.
+3. Set `EXTRACT_API_KEY` before any public deploy. When it is unset, `/extract` and `/fill` are open and can burn your free quota.
 4. `raw_text` is truncated to 2,000 chars in the response to limit data exfiltration surface; full text is never persisted.
-5. `/fill` navigates the server browser to `target_url` — treat it as trusted-operator input only (G7).
+5. `/fill` refuses private and link-local targets. Loopback stays on only while `ALLOW_LOCAL_FORM_TARGETS=1`.
 
 ---
 
@@ -74,7 +74,7 @@ See **`SECURITY.md`**. Headline items:
 ### Prerequisites
 - Python 3.11+
 - Node 20+
-- A free Gemini API key from [Google AI Studio](https://aistudio.google.com/)
+- A Gemini API key is optional. Without it, extraction uses the deterministic parser.
 
 ### Backend
 ```bash
@@ -100,7 +100,7 @@ Open http://localhost:3000. The sample form lives at `/sample-form`.
 
 ### Test with the sample
 1. Open the UI, pick `shipping.commercial_invoice`.
-2. Upload nothing — or paste the text from `samples/commercial_invoice_sample.txt`.
+2. Paste the text from `samples/commercial_invoice_sample.txt`, upload that `.txt`, or click **Load sample** in the UI. A PDF with a text layer works too. No Gemini key is required for this sample.
 3. Hit Extract. You should get a typed `ExtractionResult` with shipper, consignee, line items, totals.
 4. POST that JSON to `/fill` (or hit **Fill form** in the UI once wired) to drive it into the sample form. Use `dry_run: true` to preview the field map without launching Chromium.
 
@@ -144,7 +144,9 @@ docflow-extractor/
 │   ├── form_filler.py        ← Playwright form mapping (new)
 │   ├── sample_form.html      ← bundled target form for demos
 │   ├── gemini_client.py      ← Gemini structured-output call
-│   ├── extractors.py         ← registry + fallback
+│   ├── parser.py             ← deterministic fallback
+│   ├── extractors.py         ← registry
+│   ├── url_safety.py         ← blocks non-public /fill targets
 │   ├── schemas.py            ← Pydantic models
 │   ├── security.py           ← size/type limits, sanitizer
 │   └── requirements.txt

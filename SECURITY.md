@@ -11,18 +11,15 @@
 
 ## Bandit findings (accepted)
 
-1. **B101** — `assert` used in `security.py` for magic-byte checks.
-   *Accepted:* asserts are stripped with `python -O`; the check is also enforced via an explicit `if` that raises `HTTPException`. Defense in depth.
-2. **B110** — try/except that returns `None` around pdfplumber open.
-   *Accepted:* intentional fallback to the Gemini vision path; failure is non-fatal and logged.
+1. **B110** — pdfplumber failures are caught, logged, and the request continues on the parser / Gemini path. Non-fatal by design. Magic-byte checks raise `HTTPException` (no `assert`).
 
 ## Residual gaps (intentional, documented)
 
 ### G1 — Free-tier Gemini data use
 Google's free tier may use prompts to improve products. **Do not** send real PII or commercially sensitive documents through the free endpoint. For production data, move the project to a paid AI Studio tier (data not used for training) or self-host a model.
 
-### G2 — No authentication on `/extract`
-The endpoint is open. Anyone who discovers the deployed URL can burn the 1,500 req/day free quota. **Mitigation before public deploy:** add an `X-API-Key` header check (env `EXTRACT_API_KEY`) or put the service behind a reverse proxy with basic auth. Skeleton is commented in `main.py`.
+### G2 — Optional API key
+If `EXTRACT_API_KEY` is unset, `/extract` and `/fill` are open and can burn a free Gemini quota. **Set `EXTRACT_API_KEY` before any public deploy.** When it is set, requests must send a matching `X-API-Key` header (`secrets.compare_digest`). The Next proxy attaches the key from its own env so the browser never sees it.
 
 ### G3 — Render free tier limits
 512 MB RAM, sleeps after 15 min idle, no SLA. Suitable for demos and low traffic. For sustained load, upgrade the Render plan or move the backend to a small VPS.
@@ -36,8 +33,8 @@ Pins are from Sep 2026. Re-run `pip list --outdated` and `npm outdated` monthly;
 ### G6 — Playwright on the free tier (new)
 Chromium adds ~170 MB to the image and ~150–250 MB RSS at runtime. Combined with FastAPI + the Gemini client this sits close to the 512 MB ceiling, so concurrent fills or a cold start under memory pressure can OOM. **Mitigations in place:** headless Chromium only, one browser per request then closed, `PLAYWRIGHT_BROWSERS_PATH` pinned to ephemeral disk. **Before any real traffic:** move to a paid Render plan (2 GB+) or run the filler in a separate worker with more headroom. The `/fill` endpoint is rate-limited like `/extract`.
 
-### G7 — Target-form SSRF surface (new)
-`/fill` navigates the server's browser to `target_url` (body or `FORM_TARGET_URL` env). A caller could point it at internal addresses. **Mitigation:** only the operator sets `FORM_TARGET_URL`; the per-request override is accepted as-is because the endpoint is already unauthenticated (G2) and the whole service is demo-grade. Lock it down with an allowlist before any public deploy.
+### G7 — Target-form SSRF surface
+`/fill` navigates the server browser to `target_url`. `url_safety.assert_safe_target` rejects non-http(s) URLs, cloud-metadata hosts, and any resolved private, link-local, reserved, or multicast address. Loopback is allowed only when `ALLOW_LOCAL_FORM_TARGETS=1` (the default, so the bundled sample form works). The final page URL is checked again after navigation. A redirect racing a DNS change is still a residual risk; keep the endpoint behind the API key (G2) on any public host.
 
 ## What we hardened vs V1
 - CORS: `*` → explicit `CORS_ORIGINS` allowlist.

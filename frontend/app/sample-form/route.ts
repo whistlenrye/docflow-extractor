@@ -2,14 +2,18 @@ import { NextResponse } from "next/server";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-// Serves the bundled sample target form so Playwright has something to fill
-// during local demos without standing up a separate server.
 export async function GET() {
-  const html = readFileSync(
+  const candidates = [
+    join(process.cwd(), "public", "sample-form.html"),
     join(process.cwd(), "..", "backend", "sample_form.html"),
-    "utf-8"
-  );
-  return new NextResponse(html, {
-    headers: { "content-type": "text/html; charset=utf-8" },
-  });
+  ];
+  for (const path of candidates) {
+    try {
+      const html = readFileSync(path, "utf-8");
+      return new NextResponse(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+    } catch {
+      /* try the next location */
+    }
+  }
+  return NextResponse.json({ detail: "sample form missing" }, { status: 500 });
 }

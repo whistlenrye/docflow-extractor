@@ -1,15 +1,12 @@
-// Proxies /fill to the FastAPI backend so the browser never talks to it directly.
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.BACKEND_URL || "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
-  const res = await fetch(`${BACKEND}/fill`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body,
-  });
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.EXTRACT_API_KEY) headers["X-API-Key"] = process.env.EXTRACT_API_KEY;
+  const res = await fetch(`${BACKEND}/fill`, { method: "POST", headers, body });
   const text = await res.text();
   return new NextResponse(text, {
     status: res.status,

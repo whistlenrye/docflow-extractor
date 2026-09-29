@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Literal
 
 DocumentType = Literal[
@@ -11,6 +11,7 @@ DocumentType = Literal[
 
 
 class LineItem(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     description: str
     quantity: Optional[float] = None
     unit: Optional[str] = None
@@ -21,6 +22,7 @@ class LineItem(BaseModel):
 
 
 class Party(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     name: Optional[str] = None
     address: Optional[str] = None
     country: Optional[str] = None
@@ -28,6 +30,7 @@ class Party(BaseModel):
 
 
 class ExtractionResult(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     doc_type: str
     confidence: float = Field(ge=0, le=1)
     shipper: Optional[Party] = None
